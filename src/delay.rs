@@ -2,7 +2,7 @@
 /// Based upon the cortex-m::delay source code and https://github.com/ChrisChrisLoLo/keezyboost40/blob/master/firmware/keezus/src/delay.rs.
 /// cortex_m::delay cannot be used with RTIC, because SYST is already taken by it (https://github.com/rtic-rs/cortex-m-rtic/issues/523).
 
-use rp2040_hal::{Timer};
+use rp_pico::hal::Timer;
 use embedded_hal::blocking::delay::{DelayMs,DelayUs};
 
 /// asm::delay based delay implementation

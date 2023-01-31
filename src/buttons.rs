@@ -1,7 +1,7 @@
-use fugit::MicrosDurationU32;
+// use fugit::MicrosDurationU32;
 
-pub const DEBOUNCE_INTERVAL: MicrosDurationU32 = MicrosDurationU32::millis(20);
-pub const BTN_STATE_INTERVAL: MicrosDurationU32 = MicrosDurationU32::millis(250);
+// pub const DEBOUNCE_INTERVAL: MicrosDurationU32 = MicrosDurationU32::millis(20);
+// pub const BTN_STATE_INTERVAL: MicrosDurationU32 = MicrosDurationU32::millis(250);
 
 fn btn_debounce_irq() {
 
