@@ -4,8 +4,8 @@
 mod delay;
 
 //
-// RTIC app configuration for raspberry pi pico
-// Otherwise not needed interrupt controllers are assigned as dispatchers for software interrupts
+// RTIC app configuration for Raspberry Pi Pico
+// Otherwise not needed interrupt controllers are assigned as dispatchers for software interrupts.
 //
 #[rtic::app(device = rp_pico::pac, peripherals = true, dispatchers = [PIO0_IRQ_0, PIO0_IRQ_1, PIO1_IRQ_0])]
 mod app {
@@ -27,10 +27,9 @@ mod app {
             clocks::init_clocks_and_plls,
             timer::{ Timer, Alarm, Alarm1, Alarm2 },
             watchdog::Watchdog,
-            pac::SPI0,
-            pac::I2C1,
+            pac::{ SPI0, I2C0 },
             Sio,
-            gpio::{ bank0::*, Pin, PullDownInput, PullUpInput, PushPullOutput },
+            gpio::{ bank0::*, Pin, PullDownInput, FloatingInput, PushPullOutput },
         },
         XOSC_CRYSTAL_FREQ
     };
@@ -51,16 +50,15 @@ mod app {
         draw_target::DrawTarget,
         mono_font::{
             ascii::{
+                FONT_6X10,
                 FONT_10X20,
             },
             MonoTextStyle
         },
         text::Text,
     };
-    // use format_no_std::show;
 
     // ADC traits
-    // use adc_mcp3008::{ Mcp3008, Channels8 };
     use nau7802::{
         Nau7802,
         Ldo,
@@ -87,7 +85,8 @@ mod app {
         #[lock_free]
         adc_val: i32,
         #[lock_free]
-        adc_data_ready: Pin<Gpio13,PullUpInput>,
+        adc_data_ready: Pin<Gpio11,PullDownInput>,
+        // adc_data_ready: Pin<Gpio11,FloatingInput>,
         // delay: Delay,
         debounce_alarm: Alarm1,
     }
@@ -96,9 +95,9 @@ mod app {
     #[local]
     struct Local {
         startup_delay: Alarm2,
-        // adc: Mcp3008<hal::spi::Spi<hal::spi::Enabled,SPI1,8>, Pin<Gpio13,PushPullOutput>>,
-        // adc: Nau7802<hal::I2C<I2C1, (Pin<Gpio14, hal::gpio::FunctionI2C>, Pin<Gpio15, hal::gpio::FunctionI2C>)>>,
         display: Display<SPIInterface<hal::spi::Spi<hal::spi::Enabled,SPI0,8>, Pin<Gpio6,PushPullOutput>, Pin<Gpio5,PushPullOutput>>, mipidsi::models::ST7789, Pin<Gpio7,PushPullOutput>>,
+        lcd_bl: Pin<Gpio8,PushPullOutput>,
+        adc: Nau7802<hal::I2C<I2C0, (Pin<Gpio12, hal::gpio::FunctionI2C>, Pin<Gpio13, hal::gpio::FunctionI2C>)>>,
     }
 
     // 
@@ -110,6 +109,11 @@ mod app {
         //
         // System initialisation
         //
+        // Soft-reset does not release the hardware spinlocks
+        // Release them now to avoid a deadlock after debug or watchdog reset
+        unsafe {
+            hal::sio::spinlock_reset();
+        }
 
         // System clock initialisation
         let mut resets = c.device.RESETS;
@@ -142,16 +146,17 @@ mod app {
         let mut debounce_alarm = timer.alarm_1().unwrap();
         debounce_alarm.enable_interrupt();
 
+        // Wait until initialisation is comleted to run certain startup tasks
         let mut startup_delay = timer.alarm_2().unwrap();
         startup_delay.schedule(STARTUP_DELAY).unwrap();
         startup_delay.enable_interrupt();
 
+        // Delay initialisation
         let mut delay = Delay::new(&timer, XOSC_CRYSTAL_FREQ);
 
         //
         // SPI bus initialisation
         //
-
         // These are implicitly used by the spi driver if they are in the correct mode
         let _spi_sclk = pins.gpio2.into_mode::<hal::gpio::FunctionSpi>();
         let _spi_mosi = pins.gpio3.into_mode::<hal::gpio::FunctionSpi>();
@@ -169,11 +174,11 @@ mod app {
         //
         // I²C bus initialisation
         //
-        let sda_pin = pins.gpio14.into_mode::<hal::gpio::FunctionI2C>();
-        let scl_pin = pins.gpio15.into_mode::<hal::gpio::FunctionI2C>();
+        let sda_pin = pins.gpio12.into_mode::<hal::gpio::FunctionI2C>();
+        let scl_pin = pins.gpio13.into_mode::<hal::gpio::FunctionI2C>();
 
-        let i2c = hal::I2C::i2c1(
-            c.device.I2C1,
+        let i2c = hal::I2C::i2c0(
+            c.device.I2C0,
             sda_pin,
             scl_pin,
             100.kHz(),
@@ -185,7 +190,6 @@ mod app {
         // PWM initialisation
         //
         let pwm_slices = hal::pwm::Slices::new(c.device.PWM, &mut resets);
-
         let mut pwm = pwm_slices.pwm0;
         pwm.set_ph_correct();
         pwm.set_div_int(255u8); // 133MHz/255=521.6kHz
@@ -221,7 +225,7 @@ mod app {
         let mut lcd_cs = pins.gpio5.into_push_pull_output();
         let dc = pins.gpio6.into_push_pull_output();
         let rst = pins.gpio7.into_push_pull_output();
-        let mut lcd_bl = pins.gpio8.into_push_pull_output();
+        let lcd_bl = pins.gpio8.into_push_pull_output();
 
         lcd_cs.set_high().unwrap();
         let mut display = Builder::st7789(SPIInterface::new(spi, dc, lcd_cs))
@@ -231,19 +235,14 @@ mod app {
             .init(&mut delay, Some(rst)).unwrap();
         display.clear(Rgb565::WHITE).unwrap();
 
-        // Wait until the background has been rendered otherwise the screen will show random pixels for a moment
-        delay.delay_ms(1000);
-        lcd_bl.set_high().unwrap();
-
         //
         // ADC initialisation
         //
-        let adc_data_ready = pins.gpio13.into_pull_up_input();
-        adc_data_ready.set_interrupt_enabled(hal::gpio::Interrupt::EdgeLow, true);
-        // let adc = Mcp3008::new(spi1, adc_cs).unwrap();
-        // let adc = Nau7802::new_with_settings(i2c, Ldo::L3v3, Gain::G1, SamplesPerSecond::SPS10, &mut delay).unwrap();
+        let adc_data_ready = pins.gpio11.into_pull_down_input();
+        // let adc_data_ready = pins.gpio11.into_floating_input();
+        adc_data_ready.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, true);
 
-        update_display::spawn().unwrap();
+        let adc = Nau7802::new_with_settings(i2c, Ldo::L3v3, Gain::G16, SamplesPerSecond::SPS20, &mut delay).unwrap();
 
         (
             Shared {
@@ -257,8 +256,9 @@ mod app {
             },
             Local {
                 startup_delay,
-                // adc,
                 display,
+                lcd_bl,
+                adc,
             },
             init::Monotonics(),
         )
@@ -268,73 +268,84 @@ mod app {
     // Idle function (optional)
     // Runs if no other task is active
     //
-    #[idle]
-    fn idle(_c: idle::Context) -> ! {
-        loop {
-            // Wait For Interrupt is used instead of a busy-wait loop to allow MCU to sleep between interrupts
-            // https://developer.arm.com/documentation/ddi0406/c/Application-Level-Architecture/Instruction-Details/Alphabetical-list-of-instructions/WFI
-            // rtic::export::wfi();
+    // #[idle(local = [adc], shared = [adc_val])]
+    // fn idle(c: idle::Context) -> ! {
+    //     let idle::LocalResources {
+    //         adc,
+    //     } = c.local;
+    //     let idle::SharedResources {
+    //         mut adc_val,
+    //     } = c.shared;
+    //     loop {
+    //         // Wait For Interrupt is used instead of a busy-wait loop to allow MCU to sleep between interrupts
+    //         // https://developer.arm.com/documentation/ddi0406/c/Application-Level-Architecture/Instruction-Details/Alphabetical-list-of-instructions/WFI
+    //         // rtic::export::wfi();
 
-            
-            // update_display::spawn().unwrap();
-        }
-    }
+    //         adc_val.lock(|val| {
+    //             *val = match adc.read() {
+    //                 Ok(res) => {
+    //                     update_display::spawn(res).unwrap();
+    //                     res
+    //                 },
+    //                 Err(e) => -1,
+    //             }
+    //         });
+    //         rtic::export::nop();
+    //         // delay.delay_ms(1000);
+    //     }
+    // }
 
     //
-    // Display Update
+    // Update Display
     // Takes current values of supplied variables and draws them on the connected display
     //
-    #[task(priority = 2, local = [display], shared = [adc_val])]
-    fn update_display(c: update_display::Context) {
+    #[task(priority = 2, local = [display, lcd_bl], shared = [adc_val])]
+    fn update_display(c: update_display::Context, val: i32) {
         let update_display::LocalResources {
             display,
+            lcd_bl,
         } = c.local;
         let update_display::SharedResources {
-            adc_val,
+            mut adc_val,
         } = c.shared;
 
+        // Enable backlight if it is not enabled (on startup to hide random pixels on power up)
+        lcd_bl.set_high().unwrap();
+        
         // Create character style
         let style = MonoTextStyle::new(&FONT_10X20, Rgb565::BLACK);
 
         // Render text to the screen
         let mut buf = [0u8; 64];
-        let str = format_no_std::show(&mut buf, format_args!("Current ADC value: {}", adc_val)).unwrap();        
+        let str = format_no_std::show(&mut buf, format_args!("Current ADC value: {}", val)).unwrap();
         Text::new(str, Point::new(20,30), style).draw(display).unwrap();
-
-        // reschedule in 1 s
-        // update_display::spawn_after(one_second).unwrap();
     }
 
-    // //
-    // // ADC reader
-    // // Reads current values from ADC and saves them to variables
-    // //
-    // #[task(local = [adc], shared = [adc_val])]
-    // fn read_adc(c: read_adc::Context) {
-    //     let read_adc::LocalResources {
-    //         adc,
-    //     } = c.local;
-    //     let read_adc::SharedResources {
-    //         mut adc_val,
-    //     } = c.shared;
+    //
+    // ADC reader
+    // Reads current values from ADC and saves them to variables
+    //
+    #[task(priority = 2, local = [adc], shared = [adc_val])]
+    fn read_adc(c: read_adc::Context) {
+        let read_adc::LocalResources {
+            adc,
+        } = c.local;
+        let read_adc::SharedResources {
+            adc_val,
+        } = c.shared;
 
-    //     // read channel 0 and 1
-    //     let r0 = adc.read_channel(adc_mcp3008::Channels8::CH0).unwrap();
-    //     let r1 = adc.read_channel(adc_mcp3008::Channels8::CH1).unwrap();
-
-    //     let mut reading = r0 - r1;
-
-    //     adc_val = &mut reading;
-
-    //     update_display::spawn().unwrap();
-
-    //     // reschedule in 1 s
-    //     // read_adc::spawn_after(one_second).unwrap();
-    // }
+        *adc_val = match adc.read() {
+            Ok(res) => {
+                update_display::spawn(res).unwrap();
+                res
+            },
+            Err(e) => -1,
+        };
+    }
 
     //
     // Debounce Timer
-    // Re-enables button(s) via interrupt after set debounce duration (globally set above)
+    // Re-enables button(s) via interrupt after set debounce duration
     // 
     #[task(binds = TIMER_IRQ_1, priority = 2, shared = [ buttons, debounce_alarm])]
     fn debounce_alarm_irq(c: debounce_alarm_irq::Context) {
@@ -355,12 +366,12 @@ mod app {
 
     //
     // Startup delay
-    // Settings to be applied after STARTUP_DELAY after the device is powered on and initialised
+    // Settings to be applied after STARTUP_DELAY after the device is powered on
     // 
     #[task(binds = TIMER_IRQ_2, priority = 2, local = [startup_delay], shared = [ buttons, fan_pwm])]
     fn startup_delay_irq(c: startup_delay_irq::Context) {
         let startup_delay_irq::LocalResources {
-            startup_delay
+            startup_delay,
         } = c.local;
         let startup_delay_irq::SharedResources {
             buttons,
@@ -370,7 +381,7 @@ mod app {
         // Clear and disable startup delay interrupt
         startup_delay.clear_interrupt();
         startup_delay.disable_interrupt();
-
+        
         // Enable buttons
         let (btn0, btn1, btn2, btn3) = buttons;
         btn0.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, true);
@@ -380,20 +391,19 @@ mod app {
 
         // Start fan
         fan_pwm.set_duty(8_000);
+
+        // Turn on and update display
+        update_display::spawn(0).unwrap();
     }
 
     //
     // Interrupt handler for GPIO inputs
     // Handles all state changes on GPIO pins for which interrupts are defined and enabled
     //
-    #[task(binds = IO_IRQ_BANK0, priority = 2, /* local = [adc], */ shared = [ adc_data_ready, adc_val, buttons, debounce_alarm, fan_pwm, heater_pwm])]
+    #[task(binds = IO_IRQ_BANK0, priority = 2, shared = [ adc_data_ready, buttons, debounce_alarm, fan_pwm, heater_pwm])]
     fn io_irq_bank0(c: io_irq_bank0::Context) {
-        // let io_irq_bank0::LocalResources {
-        //     adc
-        // } = c.local;
         let io_irq_bank0::SharedResources {
             adc_data_ready,
-            mut adc_val,
             buttons,
             mut debounce_alarm,
             fan_pwm,
@@ -408,17 +418,13 @@ mod app {
             });
         }
 
-        // Adc data ready event
-        // if adc_data_ready.interrupt_status(hal::gpio::Interrupt::EdgeLow) {
-        //     // read from ADC
-        //     let mut res = adc.read_unchecked().unwrap();
-        //     adc_val = &mut res;
-
-        //     // update display
-        //     update_display::spawn().unwrap();
-        // }
+        // ADC data ready event
+        if adc_data_ready.interrupt_status(hal::gpio::Interrupt::EdgeHigh) {
+            // read from ADC
+            read_adc::spawn().unwrap();
+        }
         // Button events
-        if btn0.interrupt_status(hal::gpio::Interrupt::EdgeHigh) {
+        else if btn0.interrupt_status(hal::gpio::Interrupt::EdgeHigh) {
             btn0.clear_interrupt(hal::gpio::Interrupt::EdgeHigh);
             btn0.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, false);
 
