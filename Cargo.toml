@@ -36,8 +36,6 @@ format_no_std = "1.0.0"
 # libm = "0.2.6"
 
 # Dependencies for ADC
-# adc-mcp3008 = "0.1.1"
-# adc-mcp3008 = {path = "lib/adc-mcp3008"}
 # nau7802 = "0.1.0-alpha"
 nau7802 = {path = "lib/nau7802"}
 
