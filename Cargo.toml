@@ -33,14 +33,15 @@ embedded-graphics = "0.7.1"
 display-interface-spi = "0.4.1"
 mipidsi = "0.6.0"
 format_no_std = "1.0.0"
-# libm = "0.2.6"
+libm = "0.2.6"
 
 # Dependencies for ADC
 # nau7802 = "0.1.0-alpha"
 nau7802 = {path = "lib/nau7802"}
 
 # Dependencies for heater
-pid-ctrl = "0.1.4"
+# pid-ctrl = "0.1.4"
+pid = "4.0.0"
 
 [profile.release]
 codegen-units = 1

@@ -2,6 +2,8 @@
 #![no_main]
 
 mod delay;
+mod display;
+mod rtd;
 
 //
 // RTIC app configuration for Raspberry Pi Pico
@@ -29,7 +31,7 @@ mod app {
             watchdog::Watchdog,
             pac::{ SPI0, I2C0 },
             Sio,
-            gpio::{ bank0::*, Pin, PullDownInput, FloatingInput, PushPullOutput },
+            gpio::{ bank0::*, Pin, PullDownInput, PushPullOutput },
         },
         XOSC_CRYSTAL_FREQ
     };
@@ -55,8 +57,9 @@ mod app {
             },
             MonoTextStyle
         },
-        text::Text,
+        text::Text, primitives::Rectangle,
     };
+    use crate::display::UI;
 
     // ADC traits
     use nau7802::{
@@ -68,6 +71,17 @@ mod app {
 
     // PID traits
     // use pid_ctrl::PidCtrl;
+    use pid::{
+        Pid,
+        ControlOutput,
+    };
+
+    // RTD traits
+    use crate::rtd::{
+        self,
+        RTDType,
+        ADCRes,
+    };
 
     // Global settings
     const DEBOUNCE_INTERVAL: MicrosDurationU32 = MicrosDurationU32::millis(200);
@@ -86,7 +100,6 @@ mod app {
         adc_val: i32,
         #[lock_free]
         adc_data_ready: Pin<Gpio11,PullDownInput>,
-        // adc_data_ready: Pin<Gpio11,FloatingInput>,
         // delay: Delay,
         debounce_alarm: Alarm1,
     }
@@ -98,6 +111,8 @@ mod app {
         display: Display<SPIInterface<hal::spi::Spi<hal::spi::Enabled,SPI0,8>, Pin<Gpio6,PushPullOutput>, Pin<Gpio5,PushPullOutput>>, mipidsi::models::ST7789, Pin<Gpio7,PushPullOutput>>,
         lcd_bl: Pin<Gpio8,PushPullOutput>,
         adc: Nau7802<hal::I2C<I2C0, (Pin<Gpio12, hal::gpio::FunctionI2C>, Pin<Gpio13, hal::gpio::FunctionI2C>)>>,
+        pid: Pid<f32>,
+        ui: UI,
     }
 
     // 
@@ -235,14 +250,33 @@ mod app {
             .init(&mut delay, Some(rst)).unwrap();
         display.clear(Rgb565::WHITE).unwrap();
 
+        let ui = UI::new();
+
         //
         // ADC initialisation
         //
         let adc_data_ready = pins.gpio11.into_pull_down_input();
-        // let adc_data_ready = pins.gpio11.into_floating_input();
         adc_data_ready.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, true);
 
-        let adc = Nau7802::new_with_settings(i2c, Ldo::L3v3, Gain::G16, SamplesPerSecond::SPS20, &mut delay).unwrap();
+        let adc = Nau7802::new_with_settings(
+            i2c,
+            Ldo::L3v3,
+            Gain::G16,
+            SamplesPerSecond::SPS10,
+            &mut delay
+        )
+        .ok()
+        .unwrap();
+
+        //
+        // PID controller initialisation
+        //
+        // create new PID controller with setpoint and output limit
+        let mut pid = Pid::new(50.0, 10_000.0);
+        // use only proportional control
+        pid.p(200.0, 10_000.0);
+        pid.i(0.1, 100.0);
+        pid.d(10.0, 10.0);
 
         (
             Shared {
@@ -258,7 +292,9 @@ mod app {
                 startup_delay,
                 display,
                 lcd_bl,
+                ui,
                 adc,
+                pid,
             },
             init::Monotonics(),
         )
@@ -268,79 +304,182 @@ mod app {
     // Idle function (optional)
     // Runs if no other task is active
     //
-    // #[idle(local = [adc], shared = [adc_val])]
-    // fn idle(c: idle::Context) -> ! {
-    //     let idle::LocalResources {
-    //         adc,
-    //     } = c.local;
-    //     let idle::SharedResources {
-    //         mut adc_val,
-    //     } = c.shared;
-    //     loop {
-    //         // Wait For Interrupt is used instead of a busy-wait loop to allow MCU to sleep between interrupts
-    //         // https://developer.arm.com/documentation/ddi0406/c/Application-Level-Architecture/Instruction-Details/Alphabetical-list-of-instructions/WFI
-    //         // rtic::export::wfi();
-
-    //         adc_val.lock(|val| {
-    //             *val = match adc.read() {
-    //                 Ok(res) => {
-    //                     update_display::spawn(res).unwrap();
-    //                     res
-    //                 },
-    //                 Err(e) => -1,
-    //             }
-    //         });
-    //         rtic::export::nop();
-    //         // delay.delay_ms(1000);
-    //     }
-    // }
+    #[idle]
+    fn idle(_c: idle::Context) -> ! {
+        loop {
+            // Wait For Interrupt is used instead of a busy-wait loop to allow MCU to sleep between interrupts
+            // https://developer.arm.com/documentation/ddi0406/c/Application-Level-Architecture/Instruction-Details/Alphabetical-list-of-instructions/WFI
+            rtic::export::wfi();
+        }
+    }
 
     //
     // Update Display
     // Takes current values of supplied variables and draws them on the connected display
     //
-    #[task(priority = 2, local = [display, lcd_bl], shared = [adc_val])]
-    fn update_display(c: update_display::Context, val: i32) {
+    #[task(priority = 2, local = [display, lcd_bl, ui], shared = [heater_pwm, fan_pwm])]
+    fn update_display(c: update_display::Context, values: (f32, f32, f32, f32, f32)) {
         let update_display::LocalResources {
             display,
             lcd_bl,
+            ui,
         } = c.local;
         let update_display::SharedResources {
-            mut adc_val,
+            heater_pwm,
+            fan_pwm,
         } = c.shared;
 
         // Enable backlight if it is not enabled (on startup to hide random pixels on power up)
         lcd_bl.set_high().unwrap();
-        
+
         // Create character style
         let style = MonoTextStyle::new(&FONT_10X20, Rgb565::BLACK);
 
+        // clear background
+        display.clear(Rgb565::WHITE).unwrap();
+
+        // Draw UI
+        // ui
+
         // Render text to the screen
+        let (t, p, i, d, o) = values;
+
         let mut buf = [0u8; 64];
-        let str = format_no_std::show(&mut buf, format_args!("Current ADC value: {}", val)).unwrap();
+        let str = format_no_std::show(&mut buf, format_args!("Current Temperature: {:.2}", t)).unwrap();
         Text::new(str, Point::new(20,30), style).draw(display).unwrap();
+
+        let mut buf = [0u8; 64];
+        let str = format_no_std::show(&mut buf, format_args!("Set Temperature: {:.1}", 50.0)).unwrap();
+        Text::new(str, Point::new(20,60), style).draw(display).unwrap();
+
+        let mut buf = [0u8; 64];
+        let str = format_no_std::show(&mut buf, format_args!("P: {:.1}, I: {:.1}, D: {:.1}", p, i, d)).unwrap();
+        Text::new(str, Point::new(20,90), style).draw(display).unwrap();
+
+        let mut buf = [0u8; 64];
+        let str = format_no_std::show(&mut buf, format_args!("PID Output: {:.1}", o)).unwrap();
+        Text::new(str, Point::new(20,120), style).draw(display).unwrap();
+
+        let mut buf = [0u8; 64];
+        let heater_duty = heater_pwm.get_duty();
+        let str = format_no_std::show(&mut buf, format_args!("Heater Duty: {}", heater_duty)).unwrap();
+        Text::new(str, Point::new(20,150), style).draw(display).unwrap();
+
+        let mut buf = [0u8; 64];
+        let fan_duty = fan_pwm.get_duty();
+        let str = format_no_std::show(&mut buf, format_args!("Fan Duty: {}", fan_duty)).unwrap();
+        Text::new(str, Point::new(20,180), style).draw(display).unwrap();
     }
 
     //
-    // ADC reader
+    // Read ADC
     // Reads current values from ADC and saves them to variables
     //
-    #[task(priority = 2, local = [adc], shared = [adc_val])]
+    #[task(priority = 2, local = [adc, values: [i32; 10] = [0; 10], counter: usize = 0], shared = [adc_val])]
     fn read_adc(c: read_adc::Context) {
         let read_adc::LocalResources {
             adc,
+            values,
+            counter,
         } = c.local;
         let read_adc::SharedResources {
             adc_val,
         } = c.shared;
 
-        *adc_val = match adc.read() {
-            Ok(res) => {
-                update_display::spawn(res).unwrap();
-                res
+        match adc.read() {
+            Ok(val) => {
+                let r = rtd::conv_d_val_to_r(val, 5624, ADCRes::B24, 16).unwrap();
+                let t = rtd::calc_t(r, RTDType::PT100).unwrap();
+        //         values[*counter] = val;
+        //         if *counter >= 9_usize {
+        //             // Calculate average (src: https://codereview.stackexchange.com/questions/173338/calculate-mean-median-and-mode-in-rust)
+        //             let mut sum: i32 = 0;
+        //             for x in *values {
+        //                 sum += x;
+        //             }
+        //             unsafe { *adc_val = roundf(sum as f32 / values.len() as f32).to_int_unchecked::<i32>(); }
+        //             update_display::spawn(*adc_val).ok().unwrap();
+        //         }
+        //         *counter += 1;
+                t_control::spawn(t).ok().unwrap();
             },
-            Err(e) => -1,
+            Err(e) => defmt::panic!("Error reading from ADC."),
         };
+    }
+
+    //
+    // Temperature controller
+    // PID based temperature regulation based on current ADC readings
+    //
+    #[task(priority = 2, local = [pid], shared = [fan_pwm, heater_pwm])]
+    fn t_control(c: t_control::Context, temp: f32) {
+        let t_control::LocalResources {
+            pid,
+        } = c.local;
+        let t_control::SharedResources {
+            fan_pwm,
+            heater_pwm,
+        } = c.shared;
+
+        // Get PID controller output
+        let output = pid.next_control_output(temp);
+
+        // Adjust heater
+        let mut heater_duty = heater_pwm.get_duty() as i32;
+        heater_duty += output.output as i32;
+        if heater_duty >= 0 && heater_duty <= 64_535 {
+            heater_pwm.set_duty(heater_duty as u16);
+        }
+
+        // Adjust fan
+        let mut fan_duty = fan_pwm.get_duty() as i32;
+        fan_duty -= output.output as i32;
+        if fan_duty + 200 >= 0 && fan_duty <= 64_535 {
+            if fan_duty <= 9_500 && output.output < 200_f32 { // somewhat bias the fan start value to turn the fan on before the PID output gets below 0
+                fan_duty = 9_500;
+            } else if fan_duty <= 9_500 {
+                fan_duty = 0;
+            }
+            fan_pwm.set_duty(fan_duty as u16);
+        }
+
+        update_display::spawn((temp, output.p, output.i, output.d, output.output)).ok().unwrap();
+    }
+
+    //
+    // Startup delay
+    // Settings to be applied after STARTUP_DELAY after the device is powered on
+    // 
+    #[task(binds = TIMER_IRQ_2, priority = 2, local = [startup_delay], shared = [ buttons, fan_pwm, heater_pwm])]
+    fn startup_delay_irq(c: startup_delay_irq::Context) {
+        let startup_delay_irq::LocalResources {
+            startup_delay,
+        } = c.local;
+        let startup_delay_irq::SharedResources {
+            buttons,
+            fan_pwm,
+            heater_pwm,
+        } = c.shared;
+
+        // Clear and disable startup delay interrupt
+        startup_delay.clear_interrupt();
+        startup_delay.disable_interrupt();
+        
+        // Enable buttons
+        let (btn0, btn1, btn2, btn3) = buttons;
+        btn0.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, true);
+        btn1.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, true);
+        btn2.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, true);
+        btn3.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, true);
+
+        // Start fan
+        fan_pwm.set_duty(0);
+
+        // Set heater off
+        heater_pwm.set_duty(0);
+
+        // Turn on and update display
+        update_display::spawn((0_f32, 0_f32, 0_f32, 0_f32, 0_f32)).unwrap();
     }
 
     //
@@ -362,38 +501,6 @@ mod app {
         btn1.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, true);
         btn2.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, true);
         btn3.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, true);
-    }
-
-    //
-    // Startup delay
-    // Settings to be applied after STARTUP_DELAY after the device is powered on
-    // 
-    #[task(binds = TIMER_IRQ_2, priority = 2, local = [startup_delay], shared = [ buttons, fan_pwm])]
-    fn startup_delay_irq(c: startup_delay_irq::Context) {
-        let startup_delay_irq::LocalResources {
-            startup_delay,
-        } = c.local;
-        let startup_delay_irq::SharedResources {
-            buttons,
-            fan_pwm,
-        } = c.shared;
-
-        // Clear and disable startup delay interrupt
-        startup_delay.clear_interrupt();
-        startup_delay.disable_interrupt();
-        
-        // Enable buttons
-        let (btn0, btn1, btn2, btn3) = buttons;
-        btn0.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, true);
-        btn1.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, true);
-        btn2.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, true);
-        btn3.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, true);
-
-        // Start fan
-        fan_pwm.set_duty(8_000);
-
-        // Turn on and update display
-        update_display::spawn(0).unwrap();
     }
 
     //
@@ -420,11 +527,13 @@ mod app {
 
         // ADC data ready event
         if adc_data_ready.interrupt_status(hal::gpio::Interrupt::EdgeHigh) {
+            adc_data_ready.clear_interrupt(hal::gpio::Interrupt::EdgeHigh);
             // read from ADC
             read_adc::spawn().unwrap();
         }
         // Button events
-        else if btn0.interrupt_status(hal::gpio::Interrupt::EdgeHigh) {
+        // using no else if because of colision with regular adc data ready events
+        if btn0.interrupt_status(hal::gpio::Interrupt::EdgeHigh) {
             btn0.clear_interrupt(hal::gpio::Interrupt::EdgeHigh);
             btn0.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, false);
 
