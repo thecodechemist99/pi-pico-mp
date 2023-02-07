@@ -42,8 +42,8 @@ struct RTDCorrection;
 impl RTDCorrection {
     pub const PT100: Polynomial = [1.51892983e-10, -2.85842067e-08, -5.34227299e-06,
     1.80282972e-03, -1.61875985e-01, 4.84112370e+00];
-    pub const PT200: Polynomial = [1_f32; 6]; // FIXME: Precalculate correctional polynomial for PT200
-    pub const PT500: Polynomial = [1_f32; 6]; // FIXME: Precalculate correctional polynomial for PT500
+    pub const PT200: Polynomial = [0_f32; 6]; // FIXME: Precalculate correctional polynomial for PT200
+    pub const PT500: Polynomial = [0_f32; 6]; // FIXME: Precalculate correctional polynomial for PT500
     pub const PT1000: Polynomial = [1.51892983e-15, -2.85842067e-12, -5.34227299e-09,
     1.80282972e-05, -1.61875985e-02, 4.84112370e+00];
 }
