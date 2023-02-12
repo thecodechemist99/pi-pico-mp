@@ -263,7 +263,7 @@ mod app {
 
         display.clear(Rgb565::WHITE).unwrap();
         
-        let ui = UI::new();
+        let mut ui = UI::new();
         defmt::info!("Display initialised.");
 
         //
@@ -278,7 +278,7 @@ mod app {
             &mut delay,
         ) {
             Ok(adc) => adc,
-            Err(e) => defmt::panic!("Error initilising ADC: {:?}", defmt::Debug2Format(&e)), // TODO: Retry after 100 ms before panicing (how to reaccess i2c?)
+            Err(e) => defmt::panic!("Error initilising ADC: {:?}", defmt::Debug2Format(&e)), // TODO: Retry after 100 ms before panicking (how to reaccess i2c?)
         };
         defmt::info!("ADC initialised.");
 
@@ -286,6 +286,12 @@ mod app {
         // PID controller initialisation
         //
         let setpoint = 50.0;
+        
+        // Show setpoint in UI
+        static mut buf: [u8; 8] = [0u8; 8];
+        unsafe { // FIXME: Find a solution without unsafe code
+            ui.update_setpoint(setpoint, &mut buf);
+        }
         
         // Create PID controller with setpoint and output limit
         let mut fan_pid = Pid::new(setpoint, 10_000.0);
