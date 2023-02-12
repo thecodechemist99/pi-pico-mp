@@ -97,7 +97,7 @@ impl UI {
                     TextStyle::H1,
                 ),
                 StyledText::new(
-                    "20 °C",
+                    "",
                     TextStyle::PLarge,
                 ),
             ],
@@ -107,7 +107,7 @@ impl UI {
                     TextStyle::H1,
                 ),
                 StyledText::new(
-                    "19 °C",
+                    "",
                     TextStyle::PLarge,
                 ),
             ],
