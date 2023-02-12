@@ -103,8 +103,8 @@ pub fn calc_r(t: f32, r_0: RTDType) -> Result<f32, Error> {
 
 /// Convert digital value for n bit ADC to resistance.
 #[allow(dead_code)]
-pub fn conv_d_val_to_r(d_val: i32, r_ref: i32, res: ADCRes, pga_gain: i32) -> Result<f32, Error> {
-    let res = res as i32;
+pub fn conv_d_val_to_r(d_val: u32, r_ref: u32, res: ADCRes, pga_gain: u32) -> Result<f32, Error> {
+    let res = res as u32;
     Ok(d_val as f32 * r_ref as f32 / ( res as f32 * pga_gain as f32))
 }
 
