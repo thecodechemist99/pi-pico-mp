@@ -1,10 +1,16 @@
 [package]
 name = "pi-pico-mp"
+description = "Melting Point Detector based on Raspberry Pi Pico/RP2040"
 version = "0.1.0"
 authors = ["Florian Beck <info@florian-beck.de>"]
-edition = "2021"
-resolver = "2"
+edition = "2018"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/thecodechemist99/pi-pico-mp"
+readme = "README.md"
+categories = ["embedded", "gui", "no-std"]
+keywords = ["rp2040", "raspberry pi pico", "melting point detector"]
+build = "build.rs"
+resolver = "2"
 
 [dependencies]
 # Core dependencies
@@ -16,7 +22,7 @@ embedded-time = "0.12.0"
 panic-reset = "0.1.0"
 panic-halt= "0.2.0"
 rp2040-boot2 = "0.2.0"
-rp2040-hal = { version="0.7.0", features=["rt"] } # Unresolved issues with code in 0.7.0
+rp2040-hal = { version = "0.7.0", features = ["rt"] }
 rp-pico = "0.6.0"
 fugit = "0.3.6"
 
@@ -36,7 +42,7 @@ mipidsi = "0.6.0"
 format_no_std = "1.0.0"
 profont = "0.6.1"
 # lvgl = "0.5.2"
-# lvgl = { path = "lib/lvgl-rs/lvgl" }
+lvgl = { path = "lib/lvgl-rs/lvgl" }
 
 # Dependencies for ADC
 nau7802 = { path = "lib/nau7802" }

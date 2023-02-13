@@ -19,8 +19,8 @@ rustflags = [
 
 [features]
 # Workaround for lvgl-rs with no_std
-# default = ["build_dep"]
-# build_dep = []
+default = ["build_dep"]
+build_dep = []
 
 [build]
 target = "thumbv6m-none-eabi" # Cortex-M0 and Cortex-M0+
