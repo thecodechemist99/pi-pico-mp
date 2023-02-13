@@ -12,8 +12,7 @@ use libm::{
 
 #[allow(dead_code)]
 #[non_exhaustive]
-#[derive(Clone)]
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 pub enum ADCRes {
     B8 = 255,
     B10 = 1_023,
@@ -28,8 +27,7 @@ pub enum ADCRes {
 
 #[allow(dead_code)]
 #[non_exhaustive]
-#[derive(Clone)]
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 pub enum RTDType {
     PT100 = 100,
     PT200 = 200,
