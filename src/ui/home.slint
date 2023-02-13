@@ -1,0 +1,107 @@
+struct TempData := {
+    heading: string,
+    value: string,
+}
+
+struct SampleData := {
+    measurement: string,
+}
+
+struct Labels := {
+    label: string,
+}
+
+Temperatures := Rectangle {
+    width: 160px;
+    height: 91px;
+    background: white;
+}
+
+Measurements := Rectangle {
+    width: 160px;
+    height: 50px;
+}
+
+ButtonLabels := Rectangle {
+    width: 80px;
+    height: 50px;
+}
+
+export Home := Window {
+    width: 320px;
+    height: 240px;
+
+    // Display setpoint and temperature
+    property <[TempData]> temp_boxes: [
+        {
+            heading: "Setpoint",
+            value: "",
+        },
+        {
+            heading: "Temperature",
+            value: "",
+        },
+    ];
+    for box[i] in temp_boxes : Temperatures {
+        x: i * 160px;
+        y: 0px;
+
+        Text {
+            text: box.heading;
+            color: black;
+        }
+
+        Text {
+            text: box.value;
+            color: black;
+        }
+    }
+
+    // Display measurements
+    property <[SampleData]> measurements: [
+        {
+            measurement: "",
+        },
+        {
+            measurement: "",
+        },
+        {
+            measurement: "",
+        },
+    ];
+    for sample[i] in measurements : Measurements {
+        x: 160px;
+        y: 91px + i * 33px;
+
+        Text {
+            text: "Sample " + (i + 1) + ": " + sample.measurement;
+            color: black;
+        }
+    }
+
+    // Button labels
+    property <[Labels]> labels: [
+        {
+            label: "Start",
+        },
+        {
+            label: "Set Temp",
+        },
+        {
+            label: "Menu",
+        },
+        {
+            label: "Cal",
+        }
+    ];
+    for label[i] in labels : ButtonLabels {
+        x: i * 80px;
+        y: 190px;
+
+        Text {
+            text: label.label;
+            color: black;
+            horizontal-alignment: center;
+        }
+    }
+}
