@@ -86,6 +86,7 @@ pub struct UI {
     measurements: [HeadingValuePair; 3],
     gradient: Graph,
     time: HeadingValuePair,
+    buttons: [StyledText; 4],
 }
 
 impl UI {
@@ -156,6 +157,24 @@ impl UI {
                     TextStyle::P,
                 ),
             ],
+            buttons: [
+                StyledText::new(
+                    "Start",
+                    TextStyle::P,
+                ),
+                StyledText::new(
+                    "Set Temp",
+                    TextStyle::P,
+                ),
+                StyledText::new(
+                    "Menu",
+                    TextStyle::P,
+                ),
+                StyledText::new(
+                    "Cal",
+                    TextStyle::P,
+                ),
+            ]
         }
     }
 
@@ -232,6 +251,14 @@ pub fn draw(ui: &mut UI, display: &mut Display<SPIInterface<Spi<Enabled, SPI0, 8
         };
 
         // Draw button descriptions
+        let btn_box = display.bounding_box();
+        for (i, text) in ui.buttons.iter().enumerate() {
+            let style = match text.style {
+                TextStyle::P => Ok(MonoTextStyle::new(&FONT_8X13, Rgb565::BLACK)),
+                _ => Err(Error::UnexpectedTextStyle),
+            }.unwrap();
+            Text::new(text.fmt_text, Point::new(20 + i as i32 * 70, 210), style).draw(display).unwrap();
+        };
 }
 
 #[derive(Debug)]
