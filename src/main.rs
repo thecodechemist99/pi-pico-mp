@@ -31,10 +31,10 @@ mod app {
             watchdog::Watchdog,
             pac::{ SPI0, I2C0 },
             Sio,
-            I2C,
-            gpio::{ bank0::*, Pin, PullDownInput, PushPullOutput, FunctionI2C },
+            gpio::{ bank0::*, Pin, PullDownInput, PushPullOutput },
+            pwm::*,
         },
-        XOSC_CRYSTAL_FREQ
+        XOSC_CRYSTAL_FREQ,
     };
 
     // Time traits
@@ -63,7 +63,6 @@ mod app {
     };
 
     // PID traits
-    // use pid_ctrl::PidCtrl;
     use pid::Pid;
 
     // RTD traits
@@ -94,9 +93,7 @@ mod app {
         #[lock_free]
         buttons: (Pin<Gpio18,PullDownInput>, Pin<Gpio19,PullDownInput>, Pin<Gpio20,PullDownInput>, Pin<Gpio21,PullDownInput>),
         #[lock_free]
-        fan_pwm: hal::pwm::Channel<hal::pwm::Pwm0, hal::pwm::FreeRunning, hal::pwm::A>,
-        #[lock_free]
-        heater_pwm: hal::pwm::Channel<hal::pwm::Pwm0, hal::pwm::FreeRunning, hal::pwm::B>,
+        pwm: (Channel<Pwm0, FreeRunning, A>, Channel<Pwm0, FreeRunning, B>),
         #[lock_free]
         adc_data_ready: Pin<Gpio11,PullDownInput>,
         debounce_alarm: Alarm1,
@@ -109,8 +106,7 @@ mod app {
         display: Display<SPIInterface<hal::spi::Spi<hal::spi::Enabled,SPI0,8>, Pin<Gpio6,PushPullOutput>, Pin<Gpio5,PushPullOutput>>, mipidsi::models::ST7789, Pin<Gpio7,PushPullOutput>>,
         lcd_bl: Pin<Gpio8,PushPullOutput>,
         adc: Nau7802<hal::I2C<I2C0, (Pin<Gpio12, hal::gpio::FunctionI2C>, Pin<Gpio13, hal::gpio::FunctionI2C>)>>,
-        fan_pid: Pid<f32>,
-        heater_pid: Pid<f32>,
+        pid: (Pid<f32>, Pid<f32>),
     }
 
     // 
@@ -314,8 +310,7 @@ mod app {
                 ui,
                 ui_timer,
                 buttons,
-                fan_pwm,
-                heater_pwm,
+                pwm: (fan_pwm, heater_pwm),
                 adc_data_ready,
                 debounce_alarm,
             },
@@ -324,8 +319,7 @@ mod app {
                 display,
                 lcd_bl,
                 adc,
-                fan_pid,
-                heater_pid,
+                pid: (fan_pid, heater_pid),
             },
             init::Monotonics(),
         )
@@ -359,11 +353,11 @@ mod app {
             ui,
         } = c.shared;
 
-        // Enable backlight if it is not enabled (on startup to hide random pixels on power up)
-        lcd_bl.set_high().unwrap();
-
         // Draw UI
         crate::display::draw(ui, display);
+
+        // Enable backlight if it is not enabled (on startup to hide random pixels on power up)
+        lcd_bl.set_high().unwrap();
     }
 
     //
@@ -409,18 +403,12 @@ mod app {
 
     //
     // Temperature controller
-    // PID based temperature regulation based on current ADC readings
+    // PID temperature regulation based on current ADC readings
     //
-    #[task(priority = 3, local = [fan_pid, heater_pid], shared = [fan_pwm, heater_pwm])]
+    #[task(priority = 3, local = [pid], shared = [pwm])]
     fn t_control(c: t_control::Context, t: f32) {
-        let t_control::LocalResources {
-            fan_pid,
-            heater_pid,
-        } = c.local;
-        let t_control::SharedResources {
-            fan_pwm,
-            heater_pwm,
-        } = c.shared;
+        let (fan_pid, heater_pid) = c.local.pid;
+        let (fan_pwm, heater_pwm) = c.shared.pwm;
 
         // Adjust heater
         let output = heater_pid.next_control_output(t);
@@ -442,7 +430,7 @@ mod app {
 
     //
     // Startup delay
-    // Settings to be applied after STARTUP_DELAY after the device is powered on
+    // Settings to be applied after STARTUP_DELAY when the device is powered on
     // 
     #[task(binds = TIMER_IRQ_2, priority = 3, local = [startup_delay], shared = [ui_timer, adc_data_ready, buttons])]
     fn startup_delay_irq(c: startup_delay_irq::Context) {
@@ -482,7 +470,7 @@ mod app {
 
     //
     // UI timer
-    // Counts seconds of runtime after measurement is started
+    // Counts seconds of runtime after measurement is started and initiates display updates
     // 
     #[task(binds = TIMER_IRQ_3, priority = 2, local = [ms: u32 = 0], shared = [ui, ui_timer])]
     fn ui_timer_irq(c: ui_timer_irq::Context) {
@@ -512,7 +500,7 @@ mod app {
 
     //
     // Debounce Timer
-    // Re-enables button(s) via interrupt after set debounce duration
+    // Re-enables button(s) via interrupt after set debounce interval
     // 
     #[task(binds = TIMER_IRQ_1, priority = 3, shared = [ buttons, debounce_alarm])]
     fn debounce_alarm_irq(c: debounce_alarm_irq::Context) {
@@ -536,14 +524,12 @@ mod app {
     // Interrupt handler for GPIO inputs
     // Handles all state changes on GPIO pins for which interrupts are defined and enabled
     //
-    #[task(binds = IO_IRQ_BANK0, priority = 3, shared = [ adc_data_ready, buttons, debounce_alarm, fan_pwm, heater_pwm])]
+    #[task(binds = IO_IRQ_BANK0, priority = 3, shared = [ adc_data_ready, buttons, debounce_alarm])]
     fn io_irq_bank0(c: io_irq_bank0::Context) {
         let io_irq_bank0::SharedResources {
             adc_data_ready,
             buttons,
             mut debounce_alarm,
-            fan_pwm,
-            heater_pwm,
         } = c.shared;
         
         // Debounce buttons
@@ -556,60 +542,27 @@ mod app {
 
         // ADC data ready event
         if adc_data_ready.interrupt_status(hal::gpio::Interrupt::EdgeHigh) {
-            // Clear interrupt
             adc_data_ready.clear_interrupt(hal::gpio::Interrupt::EdgeHigh);
-
-            // read from ADC
             read_adc::spawn().unwrap();
         }
-        // Button events
-        // using no else if because of colision with regular adc data ready events
+
+        // Button press events
         if btn0.interrupt_status(hal::gpio::Interrupt::EdgeHigh) {
             btn0.clear_interrupt(hal::gpio::Interrupt::EdgeHigh);
             btn0.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, false);
 
-            // Increase fan speed
-            let mut duty = fan_pwm.get_duty();
-            if duty < 8_000 {
-                duty = 8_000;
-            } else if duty <= 64_535 {
-                duty += 1_000;
-            }
-            fan_pwm.set_duty(duty);
         } else if btn1.interrupt_status(hal::gpio::Interrupt::EdgeHigh) {
             btn1.clear_interrupt(hal::gpio::Interrupt::EdgeHigh);
             btn1.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, false);
 
-            // Decrease fan speed
-            let mut duty = fan_pwm.get_duty();
-            if duty >= 9_000 {
-                duty -= 1_000;
-            } else {
-                duty = 0;
-            }
-            fan_pwm.set_duty(duty);
         } else if btn2.interrupt_status(hal::gpio::Interrupt::EdgeHigh) {
             btn2.clear_interrupt(hal::gpio::Interrupt::EdgeHigh);
             btn2.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, false);
 
-            // Increase set temperature
-            let mut duty = heater_pwm.get_duty();
-            if duty <= 64_535 {
-                duty += 1_000;
-            }
-            heater_pwm.set_duty(duty);
         } else if btn3.interrupt_status(hal::gpio::Interrupt::EdgeHigh) {
             btn3.clear_interrupt(hal::gpio::Interrupt::EdgeHigh);
             btn3.set_interrupt_enabled(hal::gpio::Interrupt::EdgeHigh, false);
 
-            // Decrease set temperature
-            let mut duty = heater_pwm.get_duty();
-            if duty >= 1_000 {
-                duty -= 1000;
-            } else {
-                duty = 0;
-            }
-            heater_pwm.set_duty(duty);
         }
     }
 }
