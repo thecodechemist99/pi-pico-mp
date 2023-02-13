@@ -11,6 +11,7 @@ use libm::{
 };
 
 #[allow(dead_code)]
+#[non_exhaustive]
 #[derive(Clone)]
 #[derive(Copy)]
 pub enum ADCRes {
@@ -26,6 +27,7 @@ pub enum ADCRes {
 }
 
 #[allow(dead_code)]
+#[non_exhaustive]
 #[derive(Clone)]
 #[derive(Copy)]
 pub enum RTDType {
@@ -61,29 +63,34 @@ pub fn calc_t(r: f32, r_0: RTDType) -> Result<f32, Error> {
     let r_max = floorf(calc_r(850_f32, r_0).unwrap()) as i32;
 
     // set correctional polynomial for t < 0°C
-    let corr_poly = match r_0 {
-        RTDType::PT100 => RTDCorrection::PT100,
-        RTDType::PT200 => RTDCorrection::PT200,
-        RTDType::PT500 => RTDCorrection::PT500,
-        RTDType::PT1000 => RTDCorrection::PT1000,
+    let corr_poly: Result<[f32; 6], Error> = match r_0 {
+        RTDType::PT100 => Ok(RTDCorrection::PT100),
+        RTDType::PT200 => Ok(RTDCorrection::PT200),
+        RTDType::PT500 => Ok(RTDCorrection::PT500),
+        RTDType::PT1000 => Ok(RTDCorrection::PT1000),
     };
 
     // cast r_0 to f32 for calculation
     let r_0 = r_0 as i32 as f32;
     let mut t = ( -r_0 * A + sqrtf( powf(r_0, 2_f32) * powf(A, 2_f32) - 4_f32 * r_0 * B * ( r_0 - r as f32 ) ) ) / ( 2_f32 * r_0 as f32 * B );
 
-    match (floorf(r) as i32, r_0 as i32) {
-        (r, r_0) if r_0 <= r && r <= r_max => {
-            // t >= 0°C
-            Ok(t)
+    match corr_poly {
+        Ok(poly) => {
+            match (floorf(r) as i32, r_0 as i32) {
+                (r, r_0) if r_0 <= r && r <= r_max => {
+                    // t >= 0°C
+                    Ok(t)
+                },
+                (r, r_0) if r_min <= r && r < r_0 => {
+                    // t < 0°C
+                    // Apply the correctional polynomial
+                    t += poly_correction(r as f32, poly);
+                    Ok(t)
+                },
+                _ => Err(Error::OutOfBounds),
+            }
         },
-        (r, r_0) if r_min <= r && r < r_0 => {
-            // t < 0°C
-            // Apply the correctional polynomial
-            t += poly_correction(r as f32, corr_poly).unwrap();
-            Ok(t)
-        },
-        _ => Err(Error::OutOfBounds),
+        Err(e) => Err(Error::NonexistentType),
     }
 }
 
@@ -93,7 +100,6 @@ pub fn calc_t(r: f32, r_0: RTDType) -> Result<f32, Error> {
 #[allow(dead_code)]
 pub fn calc_r(t: f32, r_0: RTDType) -> Result<f32, Error> {
     let r_0 = r_0 as i32;
-
     match floorf(t) as i32 {
         0..=850 => Ok(r_0 as f32 * ( 1_f32 + A * t + B * powf(t, 2_f32) )),
         -200..=-1 => Ok(r_0 as f32 * ( 1_f32 + A * t + B * powf(t, 2_f32) + C * ( t - 100_f32 ) * powf(t, 3_f32) )),
@@ -105,25 +111,24 @@ pub fn calc_r(t: f32, r_0: RTDType) -> Result<f32, Error> {
 #[allow(dead_code)]
 pub fn conv_d_val_to_r(d_val: u32, r_ref: u32, res: ADCRes, pga_gain: u32) -> Result<f32, Error> {
     let res = res as u32;
-    Ok(d_val as f32 * r_ref as f32 / ( res as f32 * pga_gain as f32))
+    match d_val {
+        d if d <= res => Ok(d_val as f32 * r_ref as f32 / ( res as f32 * pga_gain as f32)),
+        _ => Err(Error::OutOfBounds),
+    }
 }
 
 /// Calculate polynomial correctional factor for t < 0°C.
 #[allow(dead_code)]
-fn poly_correction(r: f32, poly: Polynomial) -> Result<f32, Error> {
+fn poly_correction(r: f32, poly: Polynomial) -> f32 {
     let mut res = 0_f32;
     for (i, factor) in poly.iter().enumerate() {
-        res += match i {
-            0 => *factor,
-            1 => factor * r,
-            _ => factor * powf(r, i as f32),
-        }
-    };
-
-    Ok(res)
+        res += factor * powf(r, i as f32);
+    };    
+    res
 }
 
 #[derive(Debug)]
 pub enum Error {
     OutOfBounds,
+    NonexistentType,
 }
