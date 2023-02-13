@@ -4,6 +4,7 @@
 mod delay;
 mod display;
 mod rtd;
+// mod ui;
 
 //
 // RTIC app configuration for Raspberry Pi Pico
@@ -44,9 +45,13 @@ mod app {
     };
     use crate::delay::Delay;
 
-    // LCD traits
+    // Display and UI traits
     use display_interface_spi::SPIInterface;
-    use mipidsi::{ Builder, Display, Orientation }; 
+    use mipidsi::{
+        Builder,
+        Display,
+        Orientation,
+    }; 
     use embedded_graphics::{
         prelude::*,
         pixelcolor::Rgb565,
