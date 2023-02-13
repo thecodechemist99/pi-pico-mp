@@ -4,16 +4,13 @@ use embedded_graphics::{
     draw_target::DrawTarget,
     mono_font::{
         iso_8859_1::{
-            FONT_4X6,
-            FONT_6X13,
-            FONT_6X13_BOLD,
             FONT_8X13,
             FONT_8X13_BOLD,
             FONT_10X20,
         },
         MonoTextStyle
     },
-    text::Text, primitives::Rectangle,
+    text::Text,
 };
 use profont::{
     PROFONT_24_POINT,
