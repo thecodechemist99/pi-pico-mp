@@ -3,6 +3,7 @@ name = "pi-pico-mp"
 version = "0.1.0"
 authors = ["Florian Beck <info@florian-beck.de>"]
 edition = "2021"
+resolver = "2"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
@@ -34,9 +35,11 @@ display-interface-spi = "0.4.1"
 mipidsi = "0.6.0"
 format_no_std = "1.0.0"
 profont = "0.6.1"
+# lvgl = "0.5.2"
+# lvgl = { path = "lib/lvgl-rs/lvgl" }
 
 # Dependencies for ADC
-nau7802 = {path = "lib/nau7802"}
+nau7802 = { path = "lib/nau7802" }
 libm = "0.2.6"
 
 # Dependencies for heater
@@ -54,11 +57,11 @@ incremental = false
 strip = true
 
 [profile.dev]
-opt-level = 0
+codegen-units = 256
 debug = 2
 debug-assertions = true
 overflow-checks = true
-lto = false
 panic = 'unwind'
+lto = false
+opt-level = 0
 incremental = true
-codegen-units = 256
