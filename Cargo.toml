@@ -3,7 +3,7 @@ name = "pi-pico-mp"
 description = "Melting Point Detector based on Raspberry Pi Pico/RP2040"
 version = "0.1.0"
 authors = ["Florian Beck <info@florian-beck.de>"]
-edition = "2018"
+edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/thecodechemist99/pi-pico-mp"
 readme = "README.md"
@@ -43,6 +43,7 @@ format_no_std = "1.0.0"
 profont = "0.6.1"
 # lvgl = "0.5.2"
 lvgl = { path = "lib/lvgl-rs/lvgl" }
+# lvgl = { git = "https://github.com/thecodechemist99/lvgl-rs", branch = "master"}
 
 # Dependencies for ADC
 nau7802 = { path = "lib/nau7802" }
