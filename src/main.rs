@@ -500,7 +500,11 @@ mod app {
             ui.update_time(*ms, &mut buf);
         }
 
-        update_display::spawn().unwrap();
+        // Update display every 5 seconds
+        if *ms % 5000 == 0 {
+            update_display::spawn().unwrap();
+        }
+
     }
 
     //
