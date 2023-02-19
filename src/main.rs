@@ -3,7 +3,6 @@
 
 mod delay;
 mod display;
-mod rtd;
 // mod ui;
 
 //
@@ -71,8 +70,8 @@ mod app {
     use pid::Pid;
 
     // RTD traits
-    use crate::rtd::{
-        self,
+    use pt_rtd::{
+        self as rtd,
         RTDType,
         ADCRes,
     };
