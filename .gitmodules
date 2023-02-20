@@ -4,6 +4,3 @@
 [submodule "lib/nau7802"]
 	path = lib/nau7802
 	url = git@github.com:thecodechemist99/nau7802-rs.git
-[submodule "lib/lvgl-rs"]
-	path = lib/lvgl-rs
-	url = git@github.com:thecodechemist99/lvgl-rs.git
