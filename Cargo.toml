@@ -40,7 +40,10 @@ mipidsi = "0.6.0"
 format_no_std = "1.0.0"
 profont = "0.6.1"
 # lvgl = "0.5.2"
-lvgl = { git = "https://github.com/rafaelcaricio/lvgl-rs", branch = "master" }
+# lvgl = { git = "https://github.com/rafaelcaricio/lvgl-rs", branch = "master" }
+# lvgl = { path = "lib/lvgl-rs/lvgl" }
+lvgl = { git = "https://github.com/thecodechemist99/lvgl-rs", branch = "master" }
+
 
 # Dependencies for ADC
 nau7802 = { path = "lib/nau7802" }
