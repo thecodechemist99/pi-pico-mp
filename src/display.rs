@@ -34,8 +34,7 @@ use rp_pico::{
     pac::SPI0
 };
 
-#[derive(Clone)]
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 enum TextStyle {
     H1,
     H2,
@@ -46,8 +45,7 @@ enum TextStyle {
 
 /// Style annotated text for embedded graphics display
 #[allow(dead_code)]
-#[derive(Clone)]
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 struct StyledText {
     fmt_text: &'static str,
     style: TextStyle,
@@ -62,9 +60,8 @@ impl StyledText {
 type HeadingValuePair = [StyledText; 2];
 
 /// Point for graph
-#[derive(Clone)]
-#[derive(Copy)]
 #[allow(dead_code)]
+#[derive(Clone, Copy)]
 struct GraphPoint {
     x: i32,
     y: i32,
@@ -75,8 +72,7 @@ type Graph = [GraphPoint; 100];
 
 /// UI Configuration for embedded graphics display
 #[allow(dead_code)]
-#[derive(Clone)]
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 pub struct UI {
     setpoint: HeadingValuePair,
     temp: HeadingValuePair,
@@ -180,7 +176,11 @@ impl UI {
     }
 
     pub fn update_temp(&mut self, temp: f32, buf: &'static mut [u8; 8]) {
-        self.temp[1].fmt_text = format_no_std::show(buf, format_args!("{:.1} °C", temp)).unwrap();
+        defmt::debug!("Temperature: {:?} °C", temp);
+        self.temp[1].fmt_text = match format_no_std::show(buf, format_args!("{:.1} °C", temp)) {
+            Ok(text) => text,
+            Err(e) => defmt::panic!("Error updating temperature value in UI: {:?}", defmt::Debug2Format(&e)),
+        };
     }
 
     pub fn update_measurements(&mut self, sample: usize, temp: f32, buf: &'static mut [u8; 8]) {
@@ -191,7 +191,12 @@ impl UI {
     pub fn update_time(&mut self, ms: u32, buf: &'static mut [u8; 8]) {
         let m = ms / 60_000;
         let s = ms / 1_000 % 60;
-        self.time[1].fmt_text = format_no_std::show(buf, format_args!("{}:{} m", m, s)).unwrap();
+        if s < 10 {
+            self.time[1].fmt_text = format_no_std::show(buf, format_args!("{}:0{} m", m, s)).unwrap();
+        } else {
+            self.time[1].fmt_text = format_no_std::show(buf, format_args!("{}:{} m", m, s)).unwrap();
+        }
+
     }
 }
 
@@ -254,7 +259,7 @@ pub fn draw(ui: &mut UI, display: &mut Display<SPIInterface<Spi<Enabled, SPI0, 8
                 TextStyle::P => Ok(MonoTextStyle::new(&FONT_8X13, Rgb565::BLACK)),
                 _ => Err(Error::UnexpectedTextStyle),
             }.unwrap();
-            Text::new(text.fmt_text, Point::new(20 + i as i32 * 70, 210), style).draw(display).unwrap();
+            Text::new(text.fmt_text, Point::new(20 + i as i32 * 80, 220), style).draw(display).unwrap();
         };
 }
 
