@@ -42,11 +42,11 @@ profont = "0.6.1"
 # lvgl = "0.5.2"
 # lvgl = { git = "https://github.com/rafaelcaricio/lvgl-rs", branch = "master" }
 # lvgl = { path = "lib/lvgl-rs/lvgl" }
-# lvgl = { git = "https://github.com/thecodechemist99/lvgl-rs", branch = "master" }
+# lvgl = { git = "https://github.com/thecodechemist99/lvgl-rs", dir = "tree/master/lvgl", branch = "master" }
 
 
 # Dependencies for ADC
-nau7802 = { git = "https://github.com/amiraeva/nau7802-rs", branch = "master" }
+nau7802 = { git = "https://github.com/amiraeva/nau7802-rs", rev = "8346513" }
 libm = "0.2.6"
 
 # Dependencies for heater
