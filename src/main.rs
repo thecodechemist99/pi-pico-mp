@@ -168,7 +168,7 @@ mod app {
         startup_delay.enable_interrupt();
 
         // Delay initialisation
-        let mut delay = Delay::new(&timer, XOSC_CRYSTAL_FREQ);
+        let mut delay = Delay::new();
 
         //
         // SPI bus initialisation
