@@ -390,7 +390,7 @@ mod app {
                                 t_control::spawn(t).ok().unwrap();
 
                                 // Update temperature in UI
-                                static mut buf: [u8; 8] = [0u8; 8];
+                                static mut buf: [u8; 10] = [0u8; 10];
                                 unsafe { // FIXME: Find a solution without unsafe code
                                     ui.update_temp(t, &mut buf);
                                 }

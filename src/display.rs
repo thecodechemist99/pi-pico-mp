@@ -175,7 +175,7 @@ impl UI {
         self.setpoint[1].fmt_text = format_no_std::show(buf, format_args!("{:.1} °C", setpoint)).unwrap();
     }
 
-    pub fn update_temp(&mut self, temp: f32, buf: &'static mut [u8; 8]) {
+    pub fn update_temp(&mut self, temp: f32, buf: &'static mut [u8; 10]) {
         defmt::debug!("Temperature: {:?} °C", temp);
         self.temp[1].fmt_text = match format_no_std::show(buf, format_args!("{:.1} °C", temp)) {
             Ok(text) => text,
