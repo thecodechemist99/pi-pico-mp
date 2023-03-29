@@ -379,11 +379,11 @@ mod app {
 
         match adc.read() {
             Ok(val) => {
-                // Convert ADC reading to resistance value
+                // Convert ADC reading to resistance value                
                 match rtd::conv_d_val_to_r(val as u32, 5623, ADCRes::B24, 16) {
                     Ok(r) => {
                         // Get temperature from resistance value
-                        defmt::debug!("ADC value: {:?}, resistance value: {:?}", val as u32, r);
+                        defmt::debug!("ADC value: {:?}, resistance value: {:?}", val, r);
                         match rtd::calc_t(r, RTDType::PT100) {
                             Ok(t) => {
                                 // Hand temperature value to PID controller
