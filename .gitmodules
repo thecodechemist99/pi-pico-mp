@@ -1,3 +1,0 @@
-[submodule "lib/lvgl-rs"]
-	path = lib/lvgl-rs
-	url = git@github.com:thecodechemist99/lvgl-rs.git
