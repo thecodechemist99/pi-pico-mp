@@ -8,7 +8,7 @@
  */
 
 /* clang-format off */
-#if 1 /*Set it to "1" to enable the content*/
+#if 0 /*Set it to "1" to enable the content*/
 
 #ifndef LV_DRV_CONF_H
 #define LV_DRV_CONF_H

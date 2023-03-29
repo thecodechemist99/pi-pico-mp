@@ -13,7 +13,7 @@ rustflags = [
 
 [features]
 # Workaround for lvgl-rs with no_std
-default = ["build_dep"]
+default = ["build_dep", "embedded_graphics"]
 
 [build]
 target = "thumbv6m-none-eabi" # Cortex-M0 and Cortex-M0+
@@ -21,3 +21,4 @@ target = "thumbv6m-none-eabi" # Cortex-M0 and Cortex-M0+
 [env]
 DEFMT_LOG = "debug"
 DEP_LV_CONFIG_PATH = { value = "src/ui", relative = true }
+LVGL_INCLUDE = "/opt/homebrew/include"

@@ -53,22 +53,12 @@ pt-rtd = "0.1.1"
 pid = "4.0.0"
 
 [profile.release]
-codegen-units = 1
-debug = false
-debug-assertions = false
-overflow-checks = false
-panic = 'abort'
-lto = true
 opt-level = "z"
-incremental = false
-strip = true
+strip = false
 
 [profile.dev]
-codegen-units = 256
-debug = 2
-debug-assertions = true
-overflow-checks = true
-panic = 'unwind'
-lto = false
-opt-level = 0
-incremental = true
+opt-level = "z"
+codegen-units = 1
+lto = true
+strip = true
+panic = 'abort'
