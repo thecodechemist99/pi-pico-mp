@@ -1,6 +1,3 @@
-[submodule "lib/adc-mcp3008"]
-	path = lib/adc-mcp3008
-	url = git@github.com:thecodechemist99/adc-mcp3008.git
 [submodule "lib/lvgl-rs"]
 	path = lib/lvgl-rs
 	url = git@github.com:thecodechemist99/lvgl-rs.git
